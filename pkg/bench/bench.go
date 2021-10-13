@@ -85,7 +85,11 @@ func NewBenchRunner(cfg Config, logger log.Logger, reg prometheus.Registerer) (*
 		if err != nil {
 			return nil, errors.Wrap(err, "unable to create query benchmark workload")
 		}
-		benchRunner.queryRunner, err = newQueryRunner(cfg.ID, cfg.InstanceName, cfg.Query, queryWorkload, logger, reg)
+		tenantName := cfg.InstanceName
+		if cfg.Query.Tenant != "" {
+			tenantName = cfg.Query.Tenant
+		}
+		benchRunner.queryRunner, err = newQueryRunner(cfg.ID, tenantName, cfg.Query, queryWorkload, logger, reg)
 		if err != nil {
 			return nil, errors.Wrap(err, "unable to create query benchmark runner")
 		}
