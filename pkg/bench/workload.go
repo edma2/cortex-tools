@@ -410,14 +410,13 @@ func newQueryWorkload(id string, desc WorkloadDesc, defaultTenant string) (*quer
 					tenants = append(tenants, fmt.Sprintf("tenant-%d", i))
 				}
 			}
-			for _, tenant := range tenants {
-				queries = append(queries, query{
-					interval:  queryDesc.Interval,
-					timeRange: queryDesc.TimeRange,
-					expr:      b.String(),
-					tenant:    tenant,
-				})
-			}
+			tenant := tenants[rand.Intn(len(tenants))]
+			queries = append(queries, query{
+				interval:  queryDesc.Interval,
+				timeRange: queryDesc.TimeRange,
+				expr:      b.String(),
+				tenant:    tenant,
+			})
 		}
 	}
 
