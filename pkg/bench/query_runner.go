@@ -74,7 +74,7 @@ func newQueryRunner(id string, tenantName string, cfg QueryConfig, workload *que
 				Name:      "query_request_duration_seconds",
 				Buckets:   []float64{0.001, 0.01, 0.1, 0.3, 0.6, 1, 3, 6, 9, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 200},
 			},
-			[]string{"code", "type"},
+			[]string{"code", "type", "tenant", "expr"},
 		),
 	}
 
@@ -210,7 +210,7 @@ func (q *queryRunner) executeQuery(ctx context.Context, queryReq query) error {
 	)
 	if queryReq.timeRange > 0 {
 		queryType = "range"
-		level.Debug(q.logger).Log("msg", "sending range query", "expr", queryReq.expr, "range", queryReq.timeRange)
+		level.Debug(q.logger).Log("msg", "sending range query", "expr", queryReq.expr, "range", queryReq.timeRange, "tenant", queryReq.tenant)
 		r := v1.Range{
 			Start: now.Add(-queryReq.timeRange),
 			End:   now,
@@ -218,7 +218,7 @@ func (q *queryRunner) executeQuery(ctx context.Context, queryReq query) error {
 		}
 		_, _, err = apiClient.QueryRange(ctx, queryReq.expr, r)
 	} else {
-		level.Debug(q.logger).Log("msg", "sending instant query", "expr", queryReq.expr)
+		level.Debug(q.logger).Log("msg", "sending instant query", "expr", queryReq.expr, "tenant", queryReq.tenant)
 		_, _, err = apiClient.Query(ctx, queryReq.expr, now)
 	}
 
@@ -226,7 +226,7 @@ func (q *queryRunner) executeQuery(ctx context.Context, queryReq query) error {
 		status = "failure"
 	}
 
-	q.requestDuration.WithLabelValues(status, queryType).Observe(time.Since(now).Seconds())
+	q.requestDuration.WithLabelValues(status, queryType, queryReq.tenant, queryReq.expr).Observe(time.Since(now).Seconds())
 	return err
 }
 
