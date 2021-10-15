@@ -110,7 +110,7 @@ func (w *WriteBenchmarkRunner) getRandomWriteClient() (*writeClient, error) {
 		if err != nil {
 			return nil, err
 		}
-		cli, err = newWriteClient("bench-"+pick, w.tenantName, &remote.ClientConfig{
+		cli, err = newWriteClient("bench-"+pick, &remote.ClientConfig{
 			URL:     &config.URL{URL: u},
 			Timeout: model.Duration(w.workload.options.Timeout),
 
@@ -149,7 +149,7 @@ func (w *WriteBenchmarkRunner) Run(ctx context.Context) error {
 
 func (w *WriteBenchmarkRunner) writeWorker(batchChan chan batchReq) {
 	for batchReq := range batchChan {
-		err := w.sendBatch(context.Background(), batchReq.batch)
+		err := w.sendBatch(context.Background(), batchReq.batch, batchReq.tenant)
 		if err != nil {
 			level.Warn(w.logger).Log("msg", "unable to send batch", "err", err)
 		}
@@ -160,7 +160,7 @@ func (w *WriteBenchmarkRunner) writeWorker(batchChan chan batchReq) {
 	}
 }
 
-func (w *WriteBenchmarkRunner) sendBatch(ctx context.Context, batch []prompb.TimeSeries) error {
+func (w *WriteBenchmarkRunner) sendBatch(ctx context.Context, batch []prompb.TimeSeries, tenantName string) error {
 	level.Debug(w.logger).Log("msg", "sending timeseries batch", "num_series", strconv.Itoa(len(batch)))
 	cli, err := w.getRandomWriteClient()
 	if err != nil {
@@ -177,7 +177,7 @@ func (w *WriteBenchmarkRunner) sendBatch(ctx context.Context, batch []prompb.Tim
 
 	compressed := snappy.Encode(nil, data)
 
-	err = cli.Store(ctx, compressed)
+	err = cli.Store(ctx, tenantName, compressed)
 
 	if err != nil {
 		return errors.Wrap(err, "remote-write request failed")

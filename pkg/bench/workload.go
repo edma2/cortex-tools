@@ -36,6 +36,7 @@ type SeriesDesc struct {
 	Type         SeriesType        `yaml:"type"`
 	StaticLabels map[string]string `yaml:"static_labels"`
 	Labels       []LabelDesc       `yaml:"labels"`
+	NumTenants   int               `yaml:"num_tenants"`
 }
 
 type QueryDesc struct {
@@ -68,8 +69,9 @@ type Timeseries struct {
 }
 
 type WriteWorkload struct {
-	Replicas           int
-	Series             []*Timeseries
+	Replicas int
+	// Series by tenant
+	Series             map[string][]*Timeseries
 	TotalSeries        int
 	TotalSeriesTypeMap map[SeriesType]int
 
@@ -80,8 +82,8 @@ type WriteWorkload struct {
 	seriesBufferChan chan []prompb.TimeSeries
 }
 
-func newWriteWorkload(workloadDesc WorkloadDesc, reg prometheus.Registerer) *WriteWorkload {
-	series, totalSeriesTypeMap := SeriesDescToSeries(workloadDesc.Series)
+func newWriteWorkload(workloadDesc WorkloadDesc, defaultTenant string, reg prometheus.Registerer) *WriteWorkload {
+	series, totalSeriesTypeMap := SeriesDescToSeries(workloadDesc.Series, defaultTenant)
 
 	totalSeries := 0
 	for _, typeTotal := range totalSeriesTypeMap {
@@ -120,8 +122,8 @@ func newWriteWorkload(workloadDesc WorkloadDesc, reg prometheus.Registerer) *Wri
 	}
 }
 
-func SeriesDescToSeries(seriesDescs []SeriesDesc) ([]*Timeseries, map[SeriesType]int) {
-	series := []*Timeseries{}
+func SeriesDescToSeries(seriesDescs []SeriesDesc, defaultTenant string) (map[string][]*Timeseries, map[SeriesType]int) {
+	series := map[string][]*Timeseries{}
 	totalSeriesTypeMap := map[SeriesType]int{
 		GaugeZero:     0,
 		GaugeRandom:   0,
@@ -147,12 +149,21 @@ func SeriesDescToSeries(seriesDescs []SeriesDesc) ([]*Timeseries, map[SeriesType
 			labelSets = addLabelToLabelSet(labelSets, lbl)
 		}
 
-		series = append(series, &Timeseries{
-			labelSets:  labelSets,
-			seriesType: seriesDesc.Type,
-		})
-		numSeries := len(labelSets)
-		totalSeriesTypeMap[seriesDesc.Type] += numSeries
+		tenants := []string{defaultTenant}
+		if seriesDesc.NumTenants > 0 {
+			tenants = nil
+			for i := 0; i < seriesDesc.NumTenants; i++ {
+				tenants = append(tenants, fmt.Sprintf("tenant-%d", i))
+			}
+		}
+		for _, tenant := range tenants {
+			series[tenant] = append(series[tenant], &Timeseries{
+				labelSets:  labelSets,
+				seriesType: seriesDesc.Type,
+			})
+			numSeries := len(labelSets)
+			totalSeriesTypeMap[seriesDesc.Type] += numSeries
+		}
 	}
 
 	return series, totalSeriesTypeMap
@@ -183,33 +194,35 @@ func (w *WriteWorkload) GenerateTimeSeries(id string, t time.Time) []prompb.Time
 		replicaLabel := prompb.Label{Name: "bench_replica", Value: fmt.Sprintf("replica-%05d", replicaNum)}
 		idLabel := prompb.Label{Name: "bench_id", Value: id}
 		for _, series := range w.Series {
-			var value float64
-			switch series.seriesType {
-			case GaugeZero:
-				value = 0
-			case GaugeRandom:
-				value = rand.Float64()
-			case CounterOne:
-				value = series.lastValue + 1
-			case CounterRandom:
-				value = series.lastValue + float64(rand.Int())
-			default:
-				panic(fmt.Sprintf("unknown series type %v", series.seriesType))
-			}
-			series.lastValue = value
-			for _, labelSet := range series.labelSets {
-				newLabelSet := make([]prompb.Label, len(labelSet)+2)
-				copy(newLabelSet, labelSet)
+			for _, s := range series {
+				var value float64
+				switch s.seriesType {
+				case GaugeZero:
+					value = 0
+				case GaugeRandom:
+					value = rand.Float64()
+				case CounterOne:
+					value = s.lastValue + 1
+				case CounterRandom:
+					value = s.lastValue + float64(rand.Int())
+				default:
+					panic(fmt.Sprintf("unknown series type %v", s.seriesType))
+				}
+				s.lastValue = value
+				for _, labelSet := range s.labelSets {
+					newLabelSet := make([]prompb.Label, len(labelSet)+2)
+					copy(newLabelSet, labelSet)
 
-				newLabelSet[len(newLabelSet)-2] = replicaLabel
-				newLabelSet[len(newLabelSet)-1] = idLabel
-				timeseries = append(timeseries, prompb.TimeSeries{
-					Labels: newLabelSet,
-					Samples: []prompb.Sample{{
-						Timestamp: now,
-						Value:     value,
-					}},
-				})
+					newLabelSet[len(newLabelSet)-2] = replicaLabel
+					newLabelSet[len(newLabelSet)-1] = idLabel
+					timeseries = append(timeseries, prompb.TimeSeries{
+						Labels: newLabelSet,
+						Samples: []prompb.Sample{{
+							Timestamp: now,
+							Value:     value,
+						}},
+					})
+				}
 			}
 		}
 	}
@@ -221,6 +234,7 @@ type batchReq struct {
 	batch   []prompb.TimeSeries
 	wg      *sync.WaitGroup
 	putBack chan []prompb.TimeSeries
+	tenant  string
 }
 
 func (w *WriteWorkload) getSeriesBuffer(ctx context.Context) []prompb.TimeSeries {
@@ -261,46 +275,48 @@ func (w *WriteWorkload) generateWriteBatch(ctx context.Context, id string, numBu
 		for replicaNum := 0; replicaNum < w.Replicas; replicaNum++ {
 			replicaLabel := prompb.Label{Name: "bench_replica", Value: fmt.Sprintf("replica-%05d", replicaNum)}
 			idLabel := prompb.Label{Name: "bench_id", Value: id}
-			for _, series := range w.Series {
-				var value float64
-				switch series.seriesType {
-				case GaugeZero:
-					value = 0
-				case GaugeRandom:
-					value = rand.Float64()
-				case CounterOne:
-					value = series.lastValue + 1
-				case CounterRandom:
-					value = series.lastValue + float64(rand.Int())
-				default:
-					return fmt.Errorf("unknown series type %v", series.seriesType)
-				}
-				series.lastValue = value
-				for _, labelSet := range series.labelSets {
-					if len(seriesBuffer) == w.options.BatchSize {
-						wg.Add(1)
-						seriesChan <- batchReq{seriesBuffer, wg, w.seriesBufferChan}
-						seriesBuffer = w.getSeriesBuffer(ctx)
+			for tenant, series := range w.Series {
+				for _, s := range series {
+					var value float64
+					switch s.seriesType {
+					case GaugeZero:
+						value = 0
+					case GaugeRandom:
+						value = rand.Float64()
+					case CounterOne:
+						value = s.lastValue + 1
+					case CounterRandom:
+						value = s.lastValue + float64(rand.Int())
+					default:
+						return fmt.Errorf("unknown series type %v", s.seriesType)
 					}
-					newLabelSet := make([]prompb.Label, len(labelSet)+2)
-					copy(newLabelSet, labelSet)
+					s.lastValue = value
+					for _, labelSet := range s.labelSets {
+						if len(seriesBuffer) == w.options.BatchSize {
+							wg.Add(1)
+							seriesChan <- batchReq{seriesBuffer, wg, w.seriesBufferChan, tenant}
+							seriesBuffer = w.getSeriesBuffer(ctx)
+						}
+						newLabelSet := make([]prompb.Label, len(labelSet)+2)
+						copy(newLabelSet, labelSet)
 
-					newLabelSet[len(newLabelSet)-2] = replicaLabel
-					newLabelSet[len(newLabelSet)-1] = idLabel
-					seriesBuffer = append(seriesBuffer, prompb.TimeSeries{
-						Labels: newLabelSet,
-						Samples: []prompb.Sample{{
-							Timestamp: timeNowMillis,
-							Value:     value,
-						}},
-					})
+						newLabelSet[len(newLabelSet)-2] = replicaLabel
+						newLabelSet[len(newLabelSet)-1] = idLabel
+						seriesBuffer = append(seriesBuffer, prompb.TimeSeries{
+							Labels: newLabelSet,
+							Samples: []prompb.Sample{{
+								Timestamp: timeNowMillis,
+								Value:     value,
+							}},
+						})
+					}
+				}
+				if len(seriesBuffer) > 0 {
+					wg.Add(1)
+					seriesChan <- batchReq{seriesBuffer, wg, w.seriesBufferChan, tenant}
+					seriesBuffer = w.getSeriesBuffer(ctx)
 				}
 			}
-		}
-		if len(seriesBuffer) > 0 {
-			wg.Add(1)
-			seriesChan <- batchReq{seriesBuffer, wg, w.seriesBufferChan}
-			seriesBuffer = w.getSeriesBuffer(ctx)
 		}
 		wg.Wait()
 		if time.Since(timeNow) > w.options.Interval {

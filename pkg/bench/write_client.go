@@ -32,14 +32,13 @@ type writeClient struct {
 	url        *config_util.URL
 	Client     *http.Client
 	timeout    time.Duration
-	tenantName string
 
 	logger          log.Logger
 	requestDuration *prometheus.HistogramVec
 }
 
 // newWriteClient creates a new client for remote write.
-func newWriteClient(name string, tenantName string, conf *remote.ClientConfig, logger log.Logger, requestHistogram *prometheus.HistogramVec) (*writeClient, error) {
+func newWriteClient(name string, conf *remote.ClientConfig, logger log.Logger, requestHistogram *prometheus.HistogramVec) (*writeClient, error) {
 	httpClient, err := config_util.NewClientFromConfig(conf.HTTPClientConfig, "bench_write_client", config_util.WithHTTP2Disabled())
 	if err != nil {
 		return nil, err
@@ -55,7 +54,6 @@ func newWriteClient(name string, tenantName string, conf *remote.ClientConfig, l
 		url:        conf.URL,
 		Client:     httpClient,
 		timeout:    time.Duration(conf.Timeout),
-		tenantName: tenantName,
 
 		requestDuration: requestHistogram,
 	}, nil
@@ -63,7 +61,7 @@ func newWriteClient(name string, tenantName string, conf *remote.ClientConfig, l
 
 // Store sends a batch of samples to the HTTP endpoint, the request is the proto marshalled
 // and encoded bytes from codec.go.
-func (c *writeClient) Store(ctx context.Context, req []byte) error {
+func (c *writeClient) Store(ctx context.Context, tenantName string, req []byte) error {
 	spanLog, ctx := spanlogger.New(ctx, "writeClient.Store")
 	defer spanLog.Span.Finish()
 	httpReq, err := http.NewRequest("POST", c.url.String(), bytes.NewReader(req))
@@ -76,9 +74,7 @@ func (c *writeClient) Store(ctx context.Context, req []byte) error {
 	httpReq.Header.Set("Content-Type", "application/x-protobuf")
 	httpReq.Header.Set("User-Agent", UserAgent)
 	httpReq.Header.Set("X-Prometheus-Remote-Write-Version", "0.1.0")
-	if c.tenantName != "" {
-		httpReq.Header.Set("X-Scope-OrgID", c.tenantName)
-	}
+	httpReq.Header.Set("X-Scope-OrgID", tenantName)
 	ctx, cancel := context.WithTimeout(ctx, c.timeout)
 	defer cancel()
 

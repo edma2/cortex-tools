@@ -61,7 +61,7 @@ func (f *BlockGenCommand) run(k *kingpin.ParseContext) error {
 		}
 	}
 
-	seriesSet, totalSeriesTypeMap := bench.SeriesDescToSeries(f.Series)
+	seriesSet, totalSeriesTypeMap := bench.SeriesDescToSeries(f.Series, "default")
 	totalSeries := 0
 	for _, typeTotal := range totalSeriesTypeMap {
 		totalSeries += typeTotal
