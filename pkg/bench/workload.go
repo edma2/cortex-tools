@@ -403,14 +403,11 @@ func newQueryWorkload(id string, desc WorkloadDesc, defaultTenant string) (*quer
 				return nil, fmt.Errorf("unable to execute expr_template %s, %w", queryDesc.ExprTemplate, err)
 			}
 
-			tenants := []string{defaultTenant}
+			tenant := defaultTenant
 			if seriesDesc.NumTenants > 0 {
-				tenants = nil
-				for i := 0; i < seriesDesc.NumTenants; i++ {
-					tenants = append(tenants, fmt.Sprintf("tenant-%d", i))
-				}
+				tenant = fmt.Sprintf("tenant-%d", rand.Intn(seriesDesc.NumTenants))
 			}
-			tenant := tenants[rand.Intn(len(tenants))]
+
 			queries = append(queries, query{
 				interval:  queryDesc.Interval,
 				timeRange: queryDesc.TimeRange,
