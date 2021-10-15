@@ -179,6 +179,9 @@ func (q *queryRunner) getRandomAPIClient(tenantName string) (v1.API, error) {
 	var exists bool
 	var err error
 
+	if _, ok := q.clientPool[pick]; !ok {
+		q.clientPool[pick] = make(map[string]v1.API)
+	}
 	if cli, exists = q.clientPool[pick][tenantName]; !exists {
 		cli, err = newQueryClient("http://"+pick+"/prometheus", tenantName, q.cfg.BasicAuthUsername, q.cfg.BasicAuthPasword)
 		if err != nil {
