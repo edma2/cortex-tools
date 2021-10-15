@@ -26,7 +26,6 @@ type QueryConfig struct {
 	Endpoint          string `yaml:"endpoint"`
 	BasicAuthUsername string `yaml:"basic_auth_username"`
 	BasicAuthPasword  string `yaml:"basic_auth_password"`
-	Tenant            string `yaml:"tenant"`
 }
 
 func (cfg *QueryConfig) RegisterFlags(f *flag.FlagSet) {
@@ -34,7 +33,6 @@ func (cfg *QueryConfig) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.Endpoint, "bench.query.endpoint", "", "Remote query endpoint.")
 	f.StringVar(&cfg.BasicAuthUsername, "bench.query.basic-auth-username", "", "Set the basic auth username on remote query requests.")
 	f.StringVar(&cfg.BasicAuthPasword, "bench.query.basic-auth-password", "", "Set the basic auth password on remote query requests.")
-	f.StringVar(&cfg.Tenant, "bench.query.tenant", "", "Set the tenant identifier for queries.")
 }
 
 type queryRunner struct {
