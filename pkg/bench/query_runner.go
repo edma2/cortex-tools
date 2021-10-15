@@ -36,15 +36,14 @@ func (cfg *QueryConfig) RegisterFlags(f *flag.FlagSet) {
 }
 
 type queryRunner struct {
-	id         string
-	tenantName string
-	cfg        QueryConfig
+	id  string
+	cfg QueryConfig
 
 	// Do DNS client side load balancing if configured
 	dnsProvider *dns.Provider
 	addressMtx  sync.Mutex
 	addresses   []string
-	clientPool  map[string]v1.API
+	clientPool  map[string]map[string]v1.API
 
 	workload *queryWorkload
 
@@ -56,12 +55,11 @@ type queryRunner struct {
 
 func newQueryRunner(id string, tenantName string, cfg QueryConfig, workload *queryWorkload, logger log.Logger, reg prometheus.Registerer) (*queryRunner, error) {
 	runner := &queryRunner{
-		id:         id,
-		tenantName: tenantName,
-		cfg:        cfg,
+		id:  id,
+		cfg: cfg,
 
 		workload:   workload,
-		clientPool: map[string]v1.API{},
+		clientPool: map[string]map[string]v1.API{},
 		dnsProvider: dns.NewProvider(
 			logger,
 			extprom.WrapRegistererWithPrefix("benchtool_query_", reg),
@@ -166,7 +164,7 @@ func newQueryClient(url, tenantName, username, password string) (v1.API, error) 
 	return v1.NewAPI(apiClient), nil
 }
 
-func (q *queryRunner) getRandomAPIClient() (v1.API, error) {
+func (q *queryRunner) getRandomAPIClient(tenantName string) (v1.API, error) {
 	q.addressMtx.Lock()
 	defer q.addressMtx.Unlock()
 
@@ -181,12 +179,12 @@ func (q *queryRunner) getRandomAPIClient() (v1.API, error) {
 	var exists bool
 	var err error
 
-	if cli, exists = q.clientPool[pick]; !exists {
-		cli, err = newQueryClient("http://"+pick+"/prometheus", q.tenantName, q.cfg.BasicAuthUsername, q.cfg.BasicAuthPasword)
+	if cli, exists = q.clientPool[pick][tenantName]; !exists {
+		cli, err = newQueryClient("http://"+pick+"/prometheus", tenantName, q.cfg.BasicAuthUsername, q.cfg.BasicAuthPasword)
 		if err != nil {
 			return nil, err
 		}
-		q.clientPool[pick] = cli
+		q.clientPool[pick][tenantName] = cli
 	}
 
 	return cli, nil
@@ -195,7 +193,7 @@ func (q *queryRunner) getRandomAPIClient() (v1.API, error) {
 func (q *queryRunner) executeQuery(ctx context.Context, queryReq query) error {
 	spanLog, ctx := spanlogger.New(ctx, "queryRunner.executeQuery")
 	defer spanLog.Span.Finish()
-	apiClient, err := q.getRandomAPIClient()
+	apiClient, err := q.getRandomAPIClient(queryReq.tenant)
 	if err != nil {
 		return err
 	}

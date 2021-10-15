@@ -39,9 +39,8 @@ func (cfg *WriteBenchConfig) RegisterFlags(f *flag.FlagSet) {
 }
 
 type WriteBenchmarkRunner struct {
-	id         string
-	tenantName string
-	cfg        WriteBenchConfig
+	id  string
+	cfg WriteBenchConfig
 
 	// Do DNS client side load balancing if configured
 	remoteMtx  sync.Mutex
@@ -60,9 +59,8 @@ type WriteBenchmarkRunner struct {
 
 func NewWriteBenchmarkRunner(id string, tenantName string, cfg WriteBenchConfig, workload *WriteWorkload, logger log.Logger, reg prometheus.Registerer) (*WriteBenchmarkRunner, error) {
 	writeBench := &WriteBenchmarkRunner{
-		id:         id,
-		tenantName: tenantName,
-		cfg:        cfg,
+		id:  id,
+		cfg: cfg,
 
 		workload: workload,
 		dnsProvider: dns.NewProvider(

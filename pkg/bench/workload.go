@@ -340,9 +340,10 @@ type query struct {
 	interval  time.Duration
 	timeRange time.Duration
 	expr      string
+	tenant    string
 }
 
-func newQueryWorkload(id string, desc WorkloadDesc) (*queryWorkload, error) {
+func newQueryWorkload(id string, desc WorkloadDesc, defaultTenant string) (*queryWorkload, error) {
 	seriesTypeMap := map[SeriesType][]SeriesDesc{
 		GaugeZero:     nil,
 		GaugeRandom:   nil,
@@ -402,11 +403,21 @@ func newQueryWorkload(id string, desc WorkloadDesc) (*queryWorkload, error) {
 				return nil, fmt.Errorf("unable to execute expr_template %s, %w", queryDesc.ExprTemplate, err)
 			}
 
-			queries = append(queries, query{
-				interval:  queryDesc.Interval,
-				timeRange: queryDesc.TimeRange,
-				expr:      b.String(),
-			})
+			tenants := []string{defaultTenant}
+			if seriesDesc.NumTenants > 0 {
+				tenants = nil
+				for i := 0; i < seriesDesc.NumTenants; i++ {
+					tenants = append(tenants, fmt.Sprintf("tenant-%d", i))
+				}
+			}
+			for _, tenant := range tenants {
+				queries = append(queries, query{
+					interval:  queryDesc.Interval,
+					timeRange: queryDesc.TimeRange,
+					expr:      b.String(),
+					tenant:    tenant,
+				})
+			}
 		}
 	}
 
