@@ -226,7 +226,11 @@ func (q *queryRunner) executeQuery(ctx context.Context, queryReq query) error {
 		status = "failure"
 	}
 
-	q.requestDuration.WithLabelValues(status, queryType, queryReq.tenant, queryReq.expr).Observe(time.Since(now).Seconds())
+	if len(queryReq.tenant) > 1024 {
+		q.requestDuration.WithLabelValues(status, queryType, "label_value_too_long", queryReq.expr).Observe(time.Since(now).Seconds())
+	} else {
+		q.requestDuration.WithLabelValues(status, queryType, queryReq.tenant, queryReq.expr).Observe(time.Since(now).Seconds())
+	}
 	return err
 }
 
