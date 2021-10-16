@@ -47,6 +47,7 @@ type QueryDesc struct {
 	TimeRange                time.Duration `yaml:"time_range,omitempty"`
 	Regex                    bool          `yaml:"regex"`
 	InjectExactSerierMatcher bool          `yaml:"inject_exact_series_matcher"`
+	TenantID                 string        `yaml:"tenant_id"`
 }
 
 type WriteDesc struct {
@@ -404,7 +405,9 @@ func newQueryWorkload(id string, desc WorkloadDesc, defaultTenant string) (*quer
 			}
 
 			tenant := defaultTenant
-			if seriesDesc.NumTenants > 0 {
+			if queryDesc.TenantID != "" {
+				tenant = queryDesc.TenantID
+			} else if seriesDesc.NumTenants > 0 {
 				tenant = fmt.Sprintf("tenant-%d", rand.Intn(seriesDesc.NumTenants))
 			}
 
