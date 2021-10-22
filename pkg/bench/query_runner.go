@@ -214,7 +214,7 @@ func (q *queryRunner) executeQuery(ctx context.Context, queryReq query) error {
 		r := v1.Range{
 			Start: now.Add(-queryReq.timeRange),
 			End:   now,
-			Step:  time.Minute,
+			Step:  queryReq.step,
 		}
 		_, _, err = apiClient.QueryRange(ctx, queryReq.expr, r)
 	} else {

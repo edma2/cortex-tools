@@ -48,6 +48,7 @@ type QueryDesc struct {
 	Regex                    bool          `yaml:"regex"`
 	InjectExactSerierMatcher bool          `yaml:"inject_exact_series_matcher"`
 	TenantID                 string        `yaml:"tenant_id"`
+	Step                     time.Duration `yaml:"step"`
 }
 
 type WriteDesc struct {
@@ -342,6 +343,7 @@ type query struct {
 	timeRange time.Duration
 	expr      string
 	tenant    string
+	step      time.Duration
 }
 
 func newQueryWorkload(id string, desc WorkloadDesc, defaultTenant string) (*queryWorkload, error) {
@@ -411,11 +413,16 @@ func newQueryWorkload(id string, desc WorkloadDesc, defaultTenant string) (*quer
 				tenant = fmt.Sprintf("tenant-%d", rand.Intn(seriesDesc.NumTenants))
 			}
 
+			if queryDesc.Step == 0 {
+				queryDesc.Step = time.Minute
+			}
+
 			queries = append(queries, query{
 				interval:  queryDesc.Interval,
 				timeRange: queryDesc.TimeRange,
 				expr:      b.String(),
 				tenant:    tenant,
+				step:      queryDesc.Step,
 			})
 		}
 	}
